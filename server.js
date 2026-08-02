@@ -7,7 +7,6 @@ require("dotenv").config();
 
 require("./config/db"); // Initialize DB + seed admin
 
-
 const app = express();
 
 
@@ -22,13 +21,34 @@ app.use(
 );
 
 
+// =====================================
+// CORS Configuration (Updated)
+// =====================================
+
 app.use(
   cors({
     origin: [
       "http://localhost:3000",
+      "http://localhost:3001",
+      "https://barber-shop-frontend-eosin.vercel.app",
       process.env.FRONTEND_URL,
     ],
+
     credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE",
+      "PATCH",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
   })
 );
 
@@ -76,7 +96,6 @@ app.use(limiter);
 // API Routes
 // =====================================
 
-
 app.use(
  "/api/auth",
  require("./routes/auth.routes")
@@ -117,7 +136,6 @@ app.use(
 // =====================================
 // Health Check
 // =====================================
-
 
 app.get("/",(req,res)=>{
 
@@ -161,7 +179,6 @@ app.get("/api/status",(req,res)=>{
 // 404 Handler
 // =====================================
 
-
 app.use((req,res)=>{
 
 
@@ -182,7 +199,6 @@ app.use((req,res)=>{
 // =====================================
 // Global Error Handler
 // =====================================
-
 
 app.use((err,req,res,next)=>{
 
@@ -215,7 +231,6 @@ app.use((err,req,res,next)=>{
 // =====================================
 // Start Server
 // =====================================
-
 
 const PORT =
 process.env.PORT || 5000;
