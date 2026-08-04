@@ -1,97 +1,548 @@
-const db = require("../config/db");
+const Shop = require("../models/Shop");
+const Service = require("../models/Service");
+const Booking = require("../models/booking");
 
-// Browse approved shops with optional city/search filter
-function browseShops(req, res) {
-  const { city, search } = req.query;
-  let query = "SELECT * FROM shops WHERE status = 'approved'";
-  const params = [];
 
-  if (city) {
-    query += " AND city LIKE ?";
-    params.push(`%${city}%`);
+// =====================================
+// Browse Approved Shops
+// =====================================
+
+const browseShops = async (req, res) => {
+
+  try {
+
+    const { city, search } = req.query;
+
+
+    let filter = {
+      status: "approved"
+    };
+
+
+    if (city) {
+      filter["address.city"] = {
+        $regex: city,
+        $options: "i"
+      };
+    }
+
+
+    if (search) {
+      filter.name = {
+        $regex: search,
+        $options: "i"
+      };
+    }
+
+
+    const shops = await Shop.find(filter)
+      .sort({ createdAt: -1 })
+      .populate(
+        "owner",
+        "name email phone"
+      );
+
+
+    return res.json(shops);
+
+
+  } catch (error) {
+
+    console.error(
+      "Browse Shops Error:",
+      error
+    );
+
+
+    res.status(500).json({
+
+      success:false,
+
+      message:"Failed to fetch shops"
+
+    });
+
   }
-  if (search) {
-    query += " AND name LIKE ?";
-    params.push(`%${search}%`);
+
+};
+
+
+
+
+// =====================================
+// Get Shop Details
+// =====================================
+
+const getShopDetails = async (req,res)=>{
+
+  try {
+
+
+    const shop = await Shop.findOne({
+
+      _id:req.params.id,
+
+      status:"approved"
+
+    })
+    .populate(
+      "owner",
+      "name email phone"
+    );
+
+
+    if(!shop){
+
+      return res.status(404).json({
+
+        message:"Shop not found"
+
+      });
+
+    }
+
+
+
+    const services = await Service.find({
+
+      shop:shop._id,
+
+      isActive:true
+
+    });
+
+
+
+    return res.json({
+
+      ...shop.toObject(),
+
+      services
+
+    });
+
+
+
+  } catch(error){
+
+
+    console.error(
+      "Shop Details Error:",
+      error
+    );
+
+
+    res.status(500).json({
+
+      message:"Failed to fetch shop details"
+
+    });
+
+
   }
-  query += " ORDER BY created_at DESC";
 
-  const shops = db.prepare(query).all(...params);
+};
 
-  // attach avg rating to each shop
-  const withRatings = shops.map((shop) => {
-    const rating = db
-      .prepare("SELECT AVG(rating) AS avg, COUNT(*) AS count FROM reviews WHERE shop_id = ?")
-      .get(shop.id);
-    return { ...shop, avgRating: rating.avg ? Number(rating.avg).toFixed(1) : null, reviewCount: rating.count };
-  });
 
-  return res.json(withRatings);
+
+
+// =====================================
+// Create Booking
+// =====================================
+
+const createBooking = async(req,res)=>{
+
+
+try{
+
+
+const {
+
+shop_id,
+
+service_id,
+
+staff_id,
+
+booking_date,
+
+booking_time,
+
+customerName,
+
+customerPhone
+
+
+}=req.body;
+
+
+
+if(
+!shop_id ||
+!service_id ||
+!booking_date ||
+!booking_time
+){
+
+return res.status(400).json({
+
+message:
+"Required fields missing"
+
+});
+
 }
 
-function getShopDetails(req, res) {
-  const shop = db.prepare("SELECT * FROM shops WHERE id = ? AND status = 'approved'").get(req.params.id);
-  if (!shop) return res.status(404).json({ message: "Shop not found." });
 
-  const services = db.prepare("SELECT * FROM services WHERE shop_id = ?").all(shop.id);
-  const staff = db.prepare("SELECT * FROM staff WHERE shop_id = ?").all(shop.id);
-  const timings = db.prepare("SELECT * FROM shop_timings WHERE shop_id = ?").all(shop.id);
-  const reviews = db
-    .prepare(
-      `SELECT r.*, u.name AS customer_name FROM reviews r JOIN users u ON r.customer_id = u.id
-       WHERE r.shop_id = ? ORDER BY r.created_at DESC`
-    )
-    .all(shop.id);
 
-  return res.json({ ...shop, services, staff, timings, reviews });
+const shop = await Shop.findOne({
+
+_id:shop_id,
+
+status:"approved"
+
+});
+
+
+
+if(!shop){
+
+return res.status(404).json({
+
+message:"Shop not found"
+
+});
+
 }
 
-function createBooking(req, res) {
-  const { shop_id, service_id, staff_id, booking_date, booking_time } = req.body;
-  if (!shop_id || !service_id || !booking_date || !booking_time) {
-    return res.status(400).json({ message: "shop_id, service_id, booking_date and booking_time are required." });
-  }
 
-  const shop = db.prepare("SELECT * FROM shops WHERE id = ? AND status='approved'").get(shop_id);
-  if (!shop) return res.status(404).json({ message: "Shop not found or not approved." });
 
-  const service = db.prepare("SELECT * FROM services WHERE id = ? AND shop_id = ?").get(service_id, shop_id);
-  if (!service) return res.status(404).json({ message: "Service not found for this shop." });
+const service = await Service.findOne({
 
-  const result = db
-    .prepare(
-      `INSERT INTO bookings (customer_id, shop_id, service_id, staff_id, booking_date, booking_time, amount)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(req.user.id, shop_id, service_id, staff_id || null, booking_date, booking_time, service.price);
+_id:service_id,
 
-  return res.status(201).json({ message: "Booking created. Proceed to payment.", bookingId: result.lastInsertRowid, amount: service.price });
+shop:shop_id,
+
+isActive:true
+
+});
+
+
+
+if(!service){
+
+return res.status(404).json({
+
+message:"Service not found"
+
+});
+
 }
 
-function getMyBookings(req, res) {
-  const bookings = db
-    .prepare(
-      `SELECT b.*, sh.name AS shop_name, sh.address AS shop_address, s.name AS service_name, st.name AS staff_name,
-        (SELECT COUNT(*) FROM reviews WHERE booking_id = b.id) AS has_review
-       FROM bookings b
-       JOIN shops sh ON b.shop_id = sh.id
-       JOIN services s ON b.service_id = s.id
-       LEFT JOIN staff st ON b.staff_id = st.id
-       WHERE b.customer_id = ?
-       ORDER BY b.booking_date DESC, b.booking_time DESC`
-    )
-    .all(req.user.id);
 
-  return res.json(bookings);
+
+
+const existingBooking = await Booking.findOne({
+
+shop:shop_id,
+
+bookingDate:new Date(booking_date),
+
+bookingTime:booking_time,
+
+status:{
+$nin:[
+"Cancelled",
+"Rejected"
+]
 }
 
-function cancelBooking(req, res) {
-  const booking = db.prepare("SELECT * FROM bookings WHERE id = ? AND customer_id = ?").get(req.params.id, req.user.id);
-  if (!booking) return res.status(404).json({ message: "Booking not found." });
-  if (booking.status === "completed") return res.status(400).json({ message: "Cannot cancel a completed booking." });
+});
 
-  db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?").run(booking.id);
-  return res.json({ message: "Booking cancelled." });
+
+
+if(existingBooking){
+
+return res.status(400).json({
+
+message:"Slot already booked"
+
+});
+
 }
 
-module.exports = { browseShops, getShopDetails, createBooking, getMyBookings, cancelBooking };
+
+
+const amount =
+service.finalPrice || service.price;
+
+
+
+const commissionAmount =
+(amount * service.commission)/100;
+
+
+
+const ownerAmount =
+amount - commissionAmount;
+
+
+
+const booking = await Booking.create({
+
+
+customer:req.user.id,
+
+
+shop:shop_id,
+
+
+service:service_id,
+
+
+staff:staff_id || null,
+
+
+customerName:
+customerName || "Customer",
+
+
+customerPhone:
+customerPhone || "",
+
+
+bookingDate:
+new Date(booking_date),
+
+
+bookingTime:
+booking_time,
+
+
+amount,
+
+
+commissionAmount,
+
+
+ownerAmount
+
+
+});
+
+
+
+res.status(201).json({
+
+success:true,
+
+message:
+"Booking created successfully",
+
+booking
+
+
+});
+
+
+
+}
+catch(error){
+
+
+console.error(
+"Create Booking Error:",
+error
+);
+
+
+res.status(500).json({
+
+message:
+"Booking failed"
+
+});
+
+
+}
+
+
+};
+
+
+
+
+// =====================================
+// My Bookings
+// =====================================
+
+const getMyBookings = async(req,res)=>{
+
+
+try{
+
+
+const bookings = await Booking.find({
+
+customer:req.user.id
+
+
+})
+
+.populate(
+"shop",
+"name phone address"
+)
+
+.populate(
+"service",
+"name price finalPrice"
+)
+
+.populate(
+"staff",
+"name"
+)
+
+.sort({
+createdAt:-1
+});
+
+
+
+res.json(bookings);
+
+
+
+}
+catch(error){
+
+
+console.error(
+"My Bookings Error:",
+error
+);
+
+
+
+res.status(500).json({
+
+message:
+"Failed to fetch bookings"
+
+});
+
+
+}
+
+
+};
+
+
+
+
+// =====================================
+// Cancel Booking
+// =====================================
+
+const cancelBooking = async(req,res)=>{
+
+
+try{
+
+
+const booking =
+await Booking.findOne({
+
+_id:req.params.id,
+
+customer:req.user.id
+
+
+});
+
+
+
+if(!booking){
+
+return res.status(404).json({
+
+message:"Booking not found"
+
+});
+
+}
+
+
+
+if(
+booking.status==="Completed"
+){
+
+return res.status(400).json({
+
+message:
+"Cannot cancel completed booking"
+
+});
+
+}
+
+
+
+booking.status="Cancelled";
+
+
+await booking.save();
+
+
+
+res.json({
+
+success:true,
+
+message:
+"Booking cancelled"
+
+});
+
+
+
+}
+catch(error){
+
+
+console.error(
+"Cancel Booking Error:",
+error
+);
+
+
+res.status(500).json({
+
+message:
+"Cancel failed"
+
+});
+
+
+}
+
+
+};
+
+
+
+module.exports = {
+
+browseShops,
+
+getShopDetails,
+
+createBooking,
+
+getMyBookings,
+
+cancelBooking
+
+};
