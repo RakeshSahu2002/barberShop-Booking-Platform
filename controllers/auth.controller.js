@@ -1,4 +1,4 @@
-const db = require("../config/db");
+const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -6,10 +6,32 @@ require("dotenv").config();
 
 
 // =====================================
+// CREATE JWT TOKEN
+// =====================================
+
+const generateToken = (user) => {
+
+  return jwt.sign(
+    {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn:
+        process.env.JWT_EXPIRES_IN || "7d",
+    }
+  );
+
+};
+
+// =====================================
 // REGISTER
 // =====================================
 
-function register(req, res) {
+const register = async (req, res) => {
 
   try {
 
@@ -21,153 +43,123 @@ function register(req, res) {
       role
     } = req.body;
 
-
     if (!name || !email || !password || !role) {
 
       return res.status(400).json({
+
         message:
-        "Name, email, password and role are required."
+          "Name, email, password and role are required."
+
       });
 
     }
-
 
     if (!["customer", "shop_owner"].includes(role)) {
 
       return res.status(400).json({
+
         message:
-        "Role must be either customer or shop_owner."
+          "Invalid role."
+
       });
 
     }
 
+    const existingUser =
+      await User.findOne({
+        email: email.toLowerCase()
+      });
 
-    const existing =
-      db
-      .prepare(
-        "SELECT id FROM users WHERE email = ?"
-      )
-      .get(email);
-
-
-    if (existing) {
+    if (existingUser) {
 
       return res.status(409).json({
+
         message:
-        "An account with this email already exists."
+          "Account already exists."
+
       });
 
     }
-
-
-
     const hashedPassword =
-      bcrypt.hashSync(password, 10);
+      await bcrypt.hash(password, 10);
 
+    const user =
+      await User.create({
 
-
-    const result =
-      db
-      .prepare(
-        `
-        INSERT INTO users
-        (
-          name,
-          email,
-          password,
-          phone,
-          role
-        )
-        VALUES
-        (?, ?, ?, ?, ?)
-        `
-      )
-      .run(
         name,
-        email,
-        hashedPassword,
-        phone || null,
+
+        email:
+          email.toLowerCase(),
+
+        password:
+          hashedPassword,
+
+        phone:
+          phone || "",
+
         role
-      );
 
-
-
-    const user = {
-
-      id: result.lastInsertRowid,
-
-      name,
-
-      email,
-
-      role
-
-    };
-
-
+      });
 
     const token =
-      jwt.sign(
-        user,
-        process.env.JWT_SECRET,
-        {
-          expiresIn:
-          process.env.JWT_EXPIRES_IN || "7d"
-        }
-      );
-
-
+      generateToken(user);
 
     console.log(
       "REGISTER SUCCESS:",
-      user
+      user.email
     );
-
-
 
     return res.status(201).json({
 
       message:
-      "Registered successfully.",
+        "Registered successfully.",
 
       token,
 
-      user
+      user: {
+
+        id:user._id,
+
+        name:user.name,
+
+        email:user.email,
+
+        role:user.role
+
+      }
 
     });
 
 
 
-  } catch(err) {
+  }
+  catch(error){
 
 
     console.error(
       "REGISTER ERROR:",
-      err
+      error
     );
 
 
     return res.status(500).json({
 
       message:
-      "Server error during registration."
+        "Server error during registration."
 
     });
 
 
   }
 
-}
 
-
-
-
-
+};
 // =====================================
 // LOGIN
 // =====================================
 
-function login(req,res){
+const login = async (req,res)=>{
+
 
   try{
 
@@ -178,28 +170,27 @@ function login(req,res){
     } = req.body;
 
 
-
     if(!email || !password){
+
 
       return res.status(400).json({
 
         message:
-        "Email and password are required."
+          "Email and password are required."
 
       });
+
 
     }
 
 
+    const user =
+      await User.findOne({
 
-    const dbUser =
-      db
-      .prepare(
-        "SELECT * FROM users WHERE email = ?"
-      )
-      .get(email);
+        email:
+          email.toLowerCase()
 
-
+      });
 
     console.log(
       "LOGIN EMAIL:",
@@ -209,131 +200,81 @@ function login(req,res){
 
     console.log(
       "USER FOUND:",
-      dbUser
+      user ? user.email : null
     );
 
-
-
-    if(!dbUser){
+    if(!user){
 
 
       return res.status(401).json({
 
         message:
-        "Invalid email or password."
+          "Invalid email or password."
 
       });
 
-
     }
 
-
-
-    console.log(
-      "PASSWORD FROM REQUEST:",
-      password
-    );
-
-
-    console.log(
-      "PASSWORD HASH:",
-      dbUser.password
-    );
-
-
-
-
-    const validPassword =
-      bcrypt.compareSync(
+    const isMatch =
+      await bcrypt.compare(
         password,
-        dbUser.password
+        user.password
       );
-
-
 
     console.log(
       "PASSWORD MATCH:",
-      validPassword
+      isMatch
     );
 
-
-
-
-    if(!validPassword){
+    if(!isMatch){
 
 
       return res.status(401).json({
 
         message:
-        "Invalid email or password."
+          "Invalid email or password."
 
       });
 
-
     }
 
-
-
-
-
-    const user = {
-
-      id: dbUser.id,
-
-      name: dbUser.name,
-
-      email: dbUser.email,
-
-      role: dbUser.role
-
-    };
-
-
-
-
     const token =
-      jwt.sign(
-        user,
-        process.env.JWT_SECRET,
-        {
-          expiresIn:
-          process.env.JWT_EXPIRES_IN || "7d"
-        }
-      );
-
-
-
-
+      generateToken(user);
 
     return res.json({
 
+
       message:
-      "Login successful.",
+        "Login successful.",
 
       token,
 
-      user
+      user:{
+
+        id:user._id,
+
+        name:user.name,
+
+        email:user.email,
+
+        role:user.role
+
+      }
 
     });
 
-
-
-
-
   }
-  catch(err){
-
+  catch(error){
 
     console.error(
       "LOGIN ERROR:",
-      err
+      error
     );
-
 
     return res.status(500).json({
 
       message:
-      "Server error during login."
+        "Server error during login."
 
     });
 
@@ -341,92 +282,85 @@ function login(req,res){
   }
 
 
-}
-
-
-
-
-
+};
 
 // =====================================
 // PROFILE
 // =====================================
 
-function getProfile(req,res){
+const getProfile = async(req,res)=>{
 
 
-  try{
+ try{
 
 
-    const user =
-      db
-      .prepare(
-        `
-        SELECT 
-        id,
-        name,
-        email,
-        phone,
-        role,
-        created_at
-        FROM users
-        WHERE id = ?
-        `
-      )
-      .get(req.user.id);
-
-
-
-
-    if(!user){
-
-      return res.status(404).json({
-
-        message:
-        "User not found."
-
-      });
-
-    }
-
-
-
-    return res.json(user);
-
-
-
-  }
-  catch(err){
-
-
-    console.error(
-      "PROFILE ERROR:",
-      err
+   const user =
+    await User.findById(
+      req.user.id
+    )
+    .select(
+      "-password"
     );
 
 
-    return res.status(500).json({
+
+
+   if(!user){
+
+
+    return res.status(404).json({
 
       message:
-      "Server error."
+        "User not found."
 
     });
 
 
-  }
+   }
 
 
-}
+
+
+   return res.json(user);
+
+
+
+ }
+ catch(error){
+
+
+  console.error(
+    "PROFILE ERROR:",
+    error
+  );
+
+
+  return res.status(500).json({
+
+    message:
+      "Server error."
+
+  });
+
+
+ }
+
+
+
+};
+
+
+
 
 
 
 
 module.exports = {
 
-  register,
+ register,
 
-  login,
+ login,
 
-  getProfile
+ getProfile
 
 };

@@ -1,94 +1,60 @@
-// config/db.js
+const mongoose = require("mongoose");
+const dns = require("dns");
 
-require("dotenv").config();
-
-console.log("=================================");
-console.log("Database initialization started");
-console.log("Render production mode");
-console.log("=================================");
+dns.setDefaultResultOrder("ipv4first");
 
 
-// =====================================================
-// TEMP DATABASE ADAPTER
-// SQLite (better-sqlite3) removed for Render deployment
-// Final step: PostgreSQL migration (Supabase)
-// =====================================================
+const connectDB = async () => {
+
+  try {
+
+    const mongoURL = process.env.MONGODB_URL;
 
 
-const db = {
+    if (!mongoURL) {
 
-  // Replacement for db.exec()
-  exec: (query) => {
+      throw new Error(
+        "MONGODB_URL missing in .env file"
+      );
 
-    console.log("DB EXEC skipped");
-
-    return true;
-
-  },
+    }
 
 
-  // Replacement for db.prepare()
-  prepare: (query) => {
+    await mongoose.connect(mongoURL, {
 
-    return {
+      serverSelectionTimeoutMS: 10000,
 
-      // SELECT single row
-      get: (...params) => {
+      socketTimeoutMS: 45000,
 
-        console.log(
-          "DB GET skipped:",
-          query
-        );
-
-        return null;
-
-      },
+    });
 
 
-      // SELECT multiple rows
-      all: (...params) => {
-
-        console.log(
-          "DB ALL skipped:",
-          query
-        );
-
-        return [];
-
-      },
+    console.log(`
+=================================
+✅ MongoDB Connected Successfully
+=================================
+`);
 
 
-      // INSERT / UPDATE / DELETE
-      run: (...params) => {
-
-        console.log(
-          "DB RUN skipped:",
-          query
-        );
+  } catch (error) {
 
 
-        return {
+    console.error(`
+=================================
+❌ MongoDB Connection Failed
+=================================
 
-          lastInsertRowid: 1,
+${error.message}
 
-          changes: 1
+=================================
+`);
 
-        };
 
-      }
-
-    };
+    process.exit(1);
 
   }
 
 };
 
 
-// =====================================================
-// Database Loaded
-// =====================================================
-
-console.log("✅ Database adapter loaded");
-
-
-module.exports = db;
+module.exports = connectDB;

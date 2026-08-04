@@ -1,3 +1,11 @@
+const dns = require("dns");
+
+dns.setServers([
+  "8.8.8.8",
+  "8.8.4.4"
+]);
+
+dns.setDefaultResultOrder("ipv4first");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -5,14 +13,25 @@ const rateLimit = require("express-rate-limit");
 
 require("dotenv").config();
 
-require("./config/db"); // Initialize DB + seed admin
+
+// ================================
+// MongoDB Connection
+// ================================
+
+const connectDB = require("./config/db");
+
+
+// ================================
+// App Initialize
+// ================================
 
 const app = express();
 
 
-// =====================================
+
+// ================================
 // Security Middleware
-// =====================================
+// ================================
 
 app.use(
   helmet({
@@ -21,85 +40,145 @@ app.use(
 );
 
 
-// =====================================
-// CORS Configuration (Updated)
-// =====================================
+
+// ================================
+// CORS Configuration
+// ================================
+
+const allowedOrigins = [
+
+  "http://localhost:3000",
+
+  "http://localhost:3001",
+
+  "http://localhost:5173",
+
+  "https://barber-shop-frontend-eosin.vercel.app"
+
+];
+
+
+if(process.env.FRONTEND_URL){
+
+  allowedOrigins.push(
+    process.env.FRONTEND_URL
+  );
+
+}
+
+
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "https://barber-shop-frontend-eosin.vercel.app",
-      process.env.FRONTEND_URL,
-    ],
 
-    credentials: true,
+    origin: allowedOrigins,
 
-    methods: [
+    credentials:true,
+
+    methods:[
+
       "GET",
+
       "POST",
+
       "PUT",
+
       "DELETE",
+
       "PATCH",
-      "OPTIONS",
+
+      "OPTIONS"
+
     ],
 
-    allowedHeaders: [
+
+    allowedHeaders:[
+
       "Content-Type",
-      "Authorization",
-    ],
+
+      "Authorization"
+
+    ]
+
   })
 );
 
 
-// JSON Body Limit
+
+// ================================
+// Body Parser
+// ================================
+
+
 app.use(
-  express.json({
-    limit: "10mb",
-  })
+ express.json({
+
+  limit:"10mb"
+
+ })
 );
 
 
-// Render / Production Proxy Support
-app.set("trust proxy", 1);
+
+// ================================
+// Render Proxy
+// ================================
+
+
+app.set(
+ "trust proxy",
+ 1
+);
 
 
 
-// =====================================
-// Rate Limiting
-// =====================================
+// ================================
+// Rate Limit
+// ================================
+
 
 const limiter = rateLimit({
 
-  windowMs: 15 * 60 * 1000,
+ windowMs:
+ 15 * 60 * 1000,
 
-  max: 200,
 
-  standardHeaders: true,
+ max:200,
 
-  legacyHeaders: false,
 
-  message:{
-    success:false,
-    message:"Too many requests, please try again later."
-  }
+ standardHeaders:true,
+
+
+ legacyHeaders:false,
+
+
+ message:{
+
+  success:false,
+
+  message:
+  "Too many requests, please try again later."
+
+ }
 
 });
+
 
 
 app.use(limiter);
 
 
 
-// =====================================
+// ================================
 // API Routes
-// =====================================
+// ================================
+
 
 app.use(
  "/api/auth",
  require("./routes/auth.routes")
 );
+
 
 
 app.use(
@@ -108,10 +187,12 @@ app.use(
 );
 
 
+
 app.use(
  "/api/shop",
  require("./routes/shop.routes")
 );
+
 
 
 app.use(
@@ -120,10 +201,12 @@ app.use(
 );
 
 
+
 app.use(
  "/api/payment",
  require("./routes/payment.routes")
 );
+
 
 
 app.use(
@@ -133,62 +216,96 @@ app.use(
 
 
 
-// =====================================
+
+// ================================
 // Health Check
-// =====================================
+// ================================
+
 
 app.get("/",(req,res)=>{
 
- res.status(200).json({
 
-   success:true,
+res.status(200).json({
 
-   message:"Barber Shop Platform API is running 🚀",
+success:true,
 
-   environment:
-   process.env.NODE_ENV || "development",
 
-   time:new Date()
+message:
+"Barber Shop Platform API is running 🚀",
 
- });
+
+environment:
+process.env.NODE_ENV || "development",
+
+
+time:new Date()
 
 });
 
-
-
-// Server Status Route
-
-app.get("/api/status",(req,res)=>{
-
- res.json({
-
-   server:"OK",
-
-   database:"connected",
-
-   uptime:process.uptime()
-
- });
 
 });
 
 
 
 
-// =====================================
+// ================================
+// Database Status
+// ================================
+
+
+app.get(
+"/api/status",
+(req,res)=>{
+
+
+const mongoose =
+require("mongoose");
+
+
+res.json({
+
+server:"OK",
+
+
+database:
+mongoose.connection.readyState === 1
+?
+"connected"
+:
+"disconnected",
+
+
+uptime:
+process.uptime()
+
+
+});
+
+
+});
+
+
+
+
+
+// ================================
 // 404 Handler
-// =====================================
-
-app.use((req,res)=>{
+// ================================
 
 
- res.status(404).json({
+app.use(
+(req,res)=>{
 
-   success:false,
 
-   message:"Route not found."
+res.status(404).json({
 
- });
+success:false,
+
+
+message:
+"Route not found."
+
+});
 
 
 });
@@ -196,31 +313,36 @@ app.use((req,res)=>{
 
 
 
-// =====================================
+
+// ================================
 // Global Error Handler
-// =====================================
-
-app.use((err,req,res,next)=>{
+// ================================
 
 
- console.error(
-  "SERVER ERROR:",
-  err
- );
+app.use(
+(err,req,res,next)=>{
 
 
- res.status(
-   err.status || 500
- )
- .json({
+console.error(
+"SERVER ERROR:",
+err
+);
 
-   success:false,
 
-   message:
-   err.message ||
-   "Internal server error."
 
- });
+res.status(
+err.status || 500
+)
+.json({
+
+success:false,
+
+
+message:
+err.message ||
+"Internal server error."
+
+});
 
 
 });
@@ -228,34 +350,66 @@ app.use((err,req,res,next)=>{
 
 
 
-// =====================================
-// Start Server
-// =====================================
+
+// ================================
+// Server Start
+// ================================
+
 
 const PORT =
 process.env.PORT || 5000;
 
 
 
-const server = app.listen(PORT,()=>{
+let server;
 
 
- console.log(
- `
+
+connectDB()
+
+.then(()=>{
+
+
+server =
+app.listen(PORT,()=>{
+
+
+console.log(`
 =================================
+
 🚀 Barber Shop Backend Started
 
-PORT: ${PORT}
+PORT:
+${PORT}
 
-URL:
-http://localhost:${PORT}
+
+MongoDB:
+Connected
+
 
 ENV:
 ${process.env.NODE_ENV || "development"}
 
 =================================
- `
- );
+`);
+
+
+});
+
+
+
+})
+
+.catch((error)=>{
+
+
+console.error(
+"❌ MongoDB Connection Failed:",
+error.message
+);
+
+
+process.exit(1);
 
 
 });
@@ -263,53 +417,74 @@ ${process.env.NODE_ENV || "development"}
 
 
 
-// =====================================
+
+// ================================
 // Graceful Shutdown
-// =====================================
+// ================================
 
 
 process.on(
- "SIGTERM",
- ()=>{
-
- console.log(
- "SIGTERM received. Closing server..."
- );
+"SIGTERM",
+()=>{
 
 
- server.close(()=>{
+console.log(
+"SIGTERM received. Closing server..."
+);
 
-  console.log(
-  "Server closed successfully"
-  );
 
-  process.exit(0);
 
- });
+if(server){
+
+server.close(()=>{
+
+
+console.log(
+"Server closed successfully"
+);
+
+
+process.exit(0);
+
+
+});
+
+}
 
 
 });
 
 
 
+
+
 process.on(
- "SIGINT",
- ()=>{
-
- console.log(
- "SIGINT received. Closing server..."
- );
+"SIGINT",
+()=>{
 
 
- server.close(()=>{
+console.log(
+"SIGINT received. Closing server..."
+);
 
-  console.log(
-  "Server closed successfully"
-  );
 
-  process.exit(0);
 
- });
+if(server){
+
+server.close(()=>{
+
+
+console.log(
+"Server closed successfully"
+);
+
+
+process.exit(0);
+
+
+});
+
+}
 
 
 });
